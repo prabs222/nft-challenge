@@ -2,15 +2,14 @@ import * as dotenv from "dotenv";
 import { updateMetadataFiles, uploadFolderToIPFS } from "./metadata";
 import { openWallet } from "./utils";
 import { readdir } from "fs/promises";
-import { NftCollection } from "contracts/NftCollection";
-import { waitSeqno } from "delay";
 import { toNano } from "ton-core";
-import { NftItem } from "contracts/NftItem";
-import { NftMarketplace } from "contracts/NftMarketplace";
+import { NftItem } from "./contracts/NftItem";
+import { NftMarketplace } from "./contracts/NftMarketplace";
+import { GetGemsSaleData, NftSale } from "./contracts/SaleContract";
+import { NftCollection } from "./contracts/NftCollection";
+import { waitSeqno } from "./delay";
+
 dotenv.config();
-
-
-
 
 async function init() {
     const metadataFolderPath = "./data/metadata/";
@@ -45,39 +44,57 @@ async function init() {
     await waitSeqno(seqno, wallet);
 
     const files = await readdir(metadataFolderPath);
-files.pop();
-let index = 0;
+    files.pop();
+    let index = 0;
 
-seqno = await collection.topUpBalance(wallet, files.length);
-await waitSeqno(seqno, wallet);
-console.log(`Balance top-upped`);
-
-for (const file of files) {
-    console.log(`Start deploy of ${index + 1} NFT`);
-    const mintParams = {
-      queryId: 0,
-      itemOwnerAddress: wallet.contract.address,
-      itemIndex: index,
-      amount: toNano("0.05"),
-      commonContentUrl: file,
-    };
-
-    const nftItem = new NftItem(collection);
-    seqno = await nftItem.deploy(wallet, mintParams);
-    console.log(`Successfully deployed ${index + 1} NFT`);
+    seqno = await collection.topUpBalance(wallet, files.length);
     await waitSeqno(seqno, wallet);
-    index++;
-  }
+    console.log(`Balance top-upped`);
 
-  console.log("Start deploy of new marketplace  ");
-const marketplace = new NftMarketplace(wallet.contract.address);
-seqno = await marketplace.deploy(wallet);
-await waitSeqno(seqno, wallet);
-console.log("Successfully deployed new marketplace");
+    for (const file of files) {
+        console.log(`Start deploy of ${index + 1} NFT`);
+        const mintParams = {
+            queryId: 0,
+            itemOwnerAddress: wallet.contract.address,
+            itemIndex: index,
+            amount: toNano("0.05"),
+            commonContentUrl: file,
+        };
+
+        const nftItem = new NftItem(collection);
+        seqno = await nftItem.deploy(wallet, mintParams);
+        console.log(`Successfully deployed ${index + 1} NFT`);
+        await waitSeqno(seqno, wallet);
+        index++;
+    }
+
+    console.log("Start deploy of new marketplace  ");
+    const marketplace = new NftMarketplace(wallet.contract.address);
+    seqno = await marketplace.deploy(wallet);
+    await waitSeqno(seqno, wallet);
+    console.log("Successfully deployed new marketplace");
+
+    const nftToSaleAddress = await NftItem.getAddressByIndex(collection.address, 0);
+
+    const saleData: GetGemsSaleData = {
+        isComplete: false,
+        createdAt: Math.ceil(Date.now() / 1000),
+        marketplaceAddress: marketplace.address,
+        nftAddress: nftToSaleAddress,
+        nftOwnerAddress: null,
+        fullPrice: toNano("10"),
+        marketplaceFeeAddress: wallet.contract.address,
+        marketplaceFee: toNano("1"),
+        royaltyAddress: wallet.contract.address,
+        royaltyAmount: toNano("0.5"),
+    };
+    const nftSaleContract = new NftSale(saleData);
+    seqno = await nftSaleContract.deploy(wallet);
+    await waitSeqno(seqno, wallet);
+    // await NftItem.transfer(wallet, nftToSaleAddress, nftSaleContract.address);
 
 }
 
 
 
 void init();
-

@@ -9,7 +9,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.openWallet = void 0;
+exports.encodeOffChainContent = exports.openWallet = void 0;
 const ton_crypto_1 = require("ton-crypto");
 const ton_1 = require("ton");
 function openWallet(mnemonic, testnet) {
@@ -31,4 +31,39 @@ function openWallet(mnemonic, testnet) {
     });
 }
 exports.openWallet = openWallet;
+function bufferToChunks(buff, chunkSize) {
+    const chunks = [];
+    while (buff.byteLength > 0) {
+        chunks.push(buff.subarray(0, chunkSize));
+        buff = buff.subarray(chunkSize);
+    }
+    return chunks;
+}
+function makeSnakeCell(data) {
+    const chunks = bufferToChunks(data, 127);
+    if (chunks.length === 0) {
+        return (0, ton_1.beginCell)().endCell();
+    }
+    if (chunks.length === 1) {
+        return (0, ton_1.beginCell)().storeBuffer(chunks[0]).endCell();
+    }
+    let curCell = (0, ton_1.beginCell)();
+    for (let i = chunks.length - 1; i >= 0; i--) {
+        const chunk = chunks[i];
+        curCell.storeBuffer(chunk);
+        if (i - 1 >= 0) {
+            const nextCell = (0, ton_1.beginCell)();
+            nextCell.storeRef(curCell);
+            curCell = nextCell;
+        }
+    }
+    return curCell.endCell();
+}
+function encodeOffChainContent(content) {
+    let data = Buffer.from(content);
+    const offChainPrefix = Buffer.from([0x01]);
+    data = Buffer.concat([offChainPrefix, data]);
+    return makeSnakeCell(data);
+}
+exports.encodeOffChainContent = encodeOffChainContent;
 //# sourceMappingURL=utils.js.map
